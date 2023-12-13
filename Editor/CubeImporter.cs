@@ -247,7 +247,12 @@ public class CubeImporter : ScriptedImporter
         int size = overrideResolution > 0 ? overrideResolution : lut3DSize;
 
         // Create a new 3D texture
-        Texture3D texture = new Texture3D(size, size, size, TextureFormat.RGBA32, true);
+        Texture3D texture = new Texture3D(size, size, size, TextureFormat.RGBAHalf, false)
+            {
+                anisoLevel = 0,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+            };
         
         // Set the pixel data for the texture
         Color[] colors = new Color[size * size * size];
@@ -301,8 +306,8 @@ public class CubeImporter : ScriptedImporter
                 }
             }
         }
-        texture.SetPixels(colors);
-        //texture.Apply();
+        texture.SetPixels(colors, 0);
+        texture.Apply();
 
         // Add the texture to the asset import context
         ctx.AddObjectToAsset("main tex", texture);
