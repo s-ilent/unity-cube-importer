@@ -141,6 +141,12 @@ public class CubeImporter : ScriptedImporter
             string trimmedLine = line.Trim();
             string[] tokens = trimmedLine.Split(' ');
 
+            if (trimmedLine.Length < 1)
+            {
+                // Skip whitespace
+                continue;
+            }
+
             if (trimmedLine.StartsWith("#"))
             {
                 // Comment line, skip
