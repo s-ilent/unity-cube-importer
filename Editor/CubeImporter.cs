@@ -1,6 +1,8 @@
 ﻿using System.IO;
 using UnityEngine;
 using System.Globalization;
+using System;
+
 #if UNITY_2020_1_OR_NEWER
 using UnityEditor.AssetImporters;
 #else
@@ -19,11 +21,14 @@ public class CubeImporter : ScriptedImporter
 
     // Initialize variables for LUT data
     [SerializeField] [ReadOnly] [Space]
+    private String title = "";
+    [SerializeField] [ReadOnly] [Space]
     private int lut3DSize = 0;
     [SerializeField] [ReadOnly]
     private float lut3DInputRangeMin = 0;
     [SerializeField] [ReadOnly]
     private float lut3DInputRangeMax = 1;
+
     private Color[] lut3DData = null;
 
     [SerializeField] [ReadOnly]
@@ -32,7 +37,16 @@ public class CubeImporter : ScriptedImporter
     private float lut1DInputRangeMin = 0;
     [SerializeField] [ReadOnly]
     private float lut1DInputRangeMax = 1;
+    
     private Color[] lut1DData = null;
+
+    // Alternative to the input ranges
+    [SerializeField] [ReadOnly]
+    private bool usesDomainMinMax = false;
+    [SerializeField] [ReadOnly]
+    private Vector3 domainMin = new Vector3(0.0f, 0.0f, 0.0f);
+    [SerializeField] [ReadOnly]
+    private Vector3 domainMax = new Vector3(1.0f, 1.0f, 1.0f);
 
     // Helper for transforming data for Unity
     class LogColorTransform
@@ -117,69 +131,110 @@ public class CubeImporter : ScriptedImporter
         // Read all lines from the file
         string[] lines = File.ReadAllLines(filePath);
 
-        // Parse the file line by line
-        int lineIndex = 0;
-        while (lineIndex < lines.Length)
-        {
-            string line = lines[lineIndex].Trim();
-            string[] tokens = line.Split(' ');
-            bool hasParsed1D = false;
-            int index1D = 0;
-            bool hasParsed3D = false;
-            int index3D = 0;
+        // Initialize indices for 1D and 3D LUT data
+        int index1D = 0;
+        int index3D = 0;
 
-            if (line.StartsWith("#"))
+        // Parse the file line by line
+        foreach (string line in lines)
+        {
+            string trimmedLine = line.Trim();
+            string[] tokens = trimmedLine.Split(' ');
+
+            if (trimmedLine.StartsWith("#"))
             {
                 // Comment line, skip
-            }
-            else if (line.StartsWith("LUT_3D_SIZE"))
-            {
-                // Parse 3D LUT size
-                lut3DSize = int.Parse(tokens[1], CultureInfo.InvariantCulture);
-                lut3DData = new Color[lut3DSize * lut3DSize * lut3DSize];
-            }
-            else if (line.StartsWith("LUT_3D_INPUT_RANGE"))
-            {
-                // Parse 3D LUT input range
-                lut3DInputRangeMin = float.Parse(tokens[1], CultureInfo.InvariantCulture);
-                lut3DInputRangeMax = float.Parse(tokens[2], CultureInfo.InvariantCulture);
-            }
-            else if (line.StartsWith("LUT_1D_SIZE"))
-            {
-                // Parse 1D LUT size
-                lut1DSize = int.Parse(tokens[1], CultureInfo.InvariantCulture);
-                lut1DData = new Color[lut1DSize];
-            }
-            else if (line.StartsWith("LUT_1D_INPUT_RANGE"))
-            {
-                // Parse 1D LUT input range
-                lut1DInputRangeMin = float.Parse(tokens[1], CultureInfo.InvariantCulture);
-                lut1DInputRangeMax = float.Parse(tokens[2], CultureInfo.InvariantCulture);
-            }
-            else if (lut1DData != null && !hasParsed1D)
-            {
-                // Parse 1D LUT data
-                float r = float.Parse(tokens[0], CultureInfo.InvariantCulture);
-                float g = float.Parse(tokens[1], CultureInfo.InvariantCulture);
-                float b = float.Parse(tokens[2], CultureInfo.InvariantCulture);
-                lut1DData[index1D] = new Color(r, g, b);
-                index1D++;
-                if (index1D >= lut1DSize) hasParsed1D = true;
-            }
-            else if (lut3DData != null && !hasParsed3D)
-            {
-                // Parse 3D LUT data
-                float r = float.Parse(tokens[0], CultureInfo.InvariantCulture);
-                float g = float.Parse(tokens[1], CultureInfo.InvariantCulture);
-                float b = float.Parse(tokens[2], CultureInfo.InvariantCulture);
-                lut3DData[index3D] = new Color(r, g, b);
-                index3D++;
-                if (index3D >= lut3DSize) hasParsed3D = true;
+                continue;
             }
 
-            lineIndex++;
+            switch (tokens[0])
+            {
+                case "TITLE":
+                    title = trimmedLine.Substring("TITLE".Length).Trim();
+                    break;
+                case "LUT_3D_SIZE":
+                    lut3DSize = int.Parse(tokens[1], CultureInfo.InvariantCulture);
+                    lut3DData = new Color[lut3DSize * lut3DSize * lut3DSize];
+                    break;
+                case "LUT_3D_INPUT_RANGE":
+                    lut3DInputRangeMin = float.Parse(tokens[1], CultureInfo.InvariantCulture);
+                    lut3DInputRangeMax = float.Parse(tokens[2], CultureInfo.InvariantCulture);
+                    break;
+                case "LUT_1D_SIZE":
+                    lut1DSize = int.Parse(tokens[1], CultureInfo.InvariantCulture);
+                    lut1DData = new Color[lut1DSize];
+                    break;
+                case "LUT_1D_INPUT_RANGE":
+                    lut1DInputRangeMin = float.Parse(tokens[1], CultureInfo.InvariantCulture);
+                    lut1DInputRangeMax = float.Parse(tokens[2], CultureInfo.InvariantCulture);
+                    break;
+                case "DOMAIN_MIN":
+                    {
+                    usesDomainMinMax = true;
+                    
+                    float r = float.Parse(tokens[1], CultureInfo.InvariantCulture);
+                    float g = float.Parse(tokens[2], CultureInfo.InvariantCulture);
+                    float b = float.Parse(tokens[3], CultureInfo.InvariantCulture);
+
+                    domainMin = new Vector3(r, g, b);
+                    }
+                    break;
+                case "DOMAIN_MAX":
+                    {
+                    usesDomainMinMax = true;
+                    
+                    float r = float.Parse(tokens[1], CultureInfo.InvariantCulture);
+                    float g = float.Parse(tokens[2], CultureInfo.InvariantCulture);
+                    float b = float.Parse(tokens[3], CultureInfo.InvariantCulture);
+
+                    domainMax = new Vector3(r, g, b);
+                    }
+                    break;
+                default:
+                    try 
+                    {
+                        float r = float.Parse(tokens[0], CultureInfo.InvariantCulture);
+                        float g = float.Parse(tokens[1], CultureInfo.InvariantCulture);
+                        float b = float.Parse(tokens[2], CultureInfo.InvariantCulture);
+
+                        if (lut1DData != null && index1D < lut1DData.Length)
+                        {
+                            lut1DData[index1D++] = new Color(r, g, b);
+                        }
+                        else if (lut3DData != null && index3D < lut3DData.Length)
+                        {
+                            lut3DData[index3D++] = new Color(r, g, b);
+                        }
+                    }
+                    catch (FormatException)
+                    {
+                        Debug.Log($"FormatException on line: {trimmedLine}");
+                        throw;  // Re-throw the exception to maintain its original stack trace
+                    }
+                    break;
+            }
         }
     }
+
+    Vector3 ColorToVector3(Color color)
+    {
+        return new Vector3(color.r, color.g, color.b);
+    }
+
+    Color Vector3ToColor(Vector3 vector)
+    {
+        return new Color(vector.x, vector.y, vector.z);
+    }
+
+    Color ApplyGamma(Color color, float gamma)
+{
+    float invGamma = 1.0f / gamma;
+    return new Color(
+        Mathf.Pow(color.r, invGamma),
+        Mathf.Pow(color.g, invGamma),
+        Mathf.Pow(color.b, invGamma)
+    );
+}
 
     Color Map1D(Color input)
     {
@@ -202,11 +257,27 @@ public class CubeImporter : ScriptedImporter
 
     Color Map3D(Color input)
     {
+        Vector3 normalizedInput;
+        if (usesDomainMinMax)
+        {
+            Vector3 inputVec = ColorToVector3(input);
+            Vector3 minVec = domainMin;
+            Vector3 maxVec = domainMax;
+
+            normalizedInput = new Vector3(
+                (inputVec.x - minVec.x) / (maxVec.x - minVec.x),
+                (inputVec.y - minVec.y) / (maxVec.y - minVec.y),
+                (inputVec.z - minVec.z) / (maxVec.z - minVec.z)
+        );
+        }
+        else
+        {
+            normalizedInput = new Vector3(
+                (input.r - lut3DInputRangeMin) / (lut3DInputRangeMax - lut3DInputRangeMin),
+                (input.g - lut3DInputRangeMin) / (lut3DInputRangeMax - lut3DInputRangeMin),
+                (input.b - lut3DInputRangeMin) / (lut3DInputRangeMax - lut3DInputRangeMin));
+        }
         // Normalize the input value to the range [0, 1]
-        Vector3 normalizedInput = new Vector3(
-            (input.r - lut3DInputRangeMin) / (lut3DInputRangeMax - lut3DInputRangeMin),
-            (input.g - lut3DInputRangeMin) / (lut3DInputRangeMax - lut3DInputRangeMin),
-            (input.b - lut3DInputRangeMin) / (lut3DInputRangeMax - lut3DInputRangeMin));
 
         // Find the indices of the LUT entries that correspond to the normalized input value
         Vector3 indices = normalizedInput * (lut3DSize - 1);
@@ -267,39 +338,37 @@ public class CubeImporter : ScriptedImporter
                     float b = (float)z / (size - 1);
 
                     LogColorTransform lct = new LogColorTransform();
+                    Color thisCol = new Color(r, g, b);
 
                     if (convertLinearToLogPre)
                     {
-                        r = lct.LinearToLogC_Precise(r);
-                        g = lct.LinearToLogC_Precise(g);
-                        b = lct.LinearToLogC_Precise(b);
+                        thisCol.r = lct.LinearToLogC_Precise(thisCol.r);
+                        thisCol.g = lct.LinearToLogC_Precise(thisCol.g);
+                        thisCol.b = lct.LinearToLogC_Precise(thisCol.b);
                     }
 
                     if (convertLogToLinearPre)
                     {
-                        r = lct.LogCToLinear_Precise(r);
-                        g = lct.LogCToLinear_Precise(g);
-                        b = lct.LogCToLinear_Precise(b);
+                        thisCol.r = lct.LogCToLinear_Precise(thisCol.r);
+                        thisCol.g = lct.LogCToLinear_Precise(thisCol.g);
+                        thisCol.b = lct.LogCToLinear_Precise(thisCol.b);
                     }
 
-                    Color thisCol = new Color(r, g, b);
-
-                    if (lut1DSize > 0) Map1D(thisCol);
-                    if (lut3DSize > 0) Map3D(thisCol);
-                    
+                    if (lut1DSize != 0) thisCol = Map1D(thisCol);
+                    if (lut3DSize != 0) thisCol = Map3D(thisCol);
                     
                     if (convertLinearToLogPost)
                     {
-                        r = lct.LinearToLogC_Precise(r);
-                        g = lct.LinearToLogC_Precise(g);
-                        b = lct.LinearToLogC_Precise(b);
-                    }
+                        thisCol.r = lct.LinearToLogC_Precise(thisCol.r);
+                        thisCol.g = lct.LinearToLogC_Precise(thisCol.g);
+                        thisCol.b = lct.LinearToLogC_Precise(thisCol.b);
+                    } 
 
                     if (convertLogToLinearPost)
                     {
-                        r = lct.LogCToLinear_Precise(r);
-                        g = lct.LogCToLinear_Precise(g);
-                        b = lct.LogCToLinear_Precise(b);
+                        thisCol.r = lct.LogCToLinear_Precise(thisCol.r);
+                        thisCol.g = lct.LogCToLinear_Precise(thisCol.g);
+                        thisCol.b = lct.LogCToLinear_Precise(thisCol.b);
                     }
 
                     colors[x + y * size + z * size * size] = thisCol;
